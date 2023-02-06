@@ -1,29 +1,31 @@
 import argparse
 import os.path as osp
+
 import torch
 
-from utils.utils import (mod2normal, get_models_paths, get_images_paths,
-                    read_img, np2tensor, tensor2np, color_fix, save_img,
-                    save_img_comp, extract_patches_2d, recompose_tensor,
-                    linear_resize, swa2normal, guided_filter, modcrop)
-from utils.defaults import get_network_G_config
 from architectures import get_network
+from utils.defaults import get_network_G_config
+from utils.utils import (mod2normal, get_models_paths, np2tensor, tensor2np, color_fix, extract_patches_2d,
+                         recompose_tensor,
+                         linear_resize, swa2normal, guided_filter, modcrop)
 
 
 class nullcast():
-    #nullcontext:
+    # nullcontext:
     def __init__(self):
         pass
+
     def __enter__(self):
         pass
+
     def __exit__(self, *excinfo):
         pass
 
 
 class Model:
     def __init__(self, model_path, arch=None, scale=None,
-            in_nc=3, out_nc=3, device='cpu', meval=True,
-            strict=True, chop=True):
+                 in_nc=3, out_nc=3, device='cpu', meval=True,
+                 strict=True, chop=True):
         self.model_path = model_path
         self.arch = arch
         self.scale = scale
@@ -109,7 +111,7 @@ class Model:
             if self.arch == 'esrgan':
                 plus = False
 
-            #TODO
+            # TODO
             # print(list(state_dict))
 
             for block in list(state_dict):
@@ -122,8 +124,8 @@ class Model:
                     # upscale blocks
                     part_num = int(parts[1])
                     if (part_num > scalemin
-                        and parts[0] == "model"
-                        and parts[2] == "weight"):
+                            and parts[0] == "model"
+                            and parts[2] == "weight"):
                         # num. 2x upsample blocks
                         scale2x += 1
                     if part_num > n_uplayer:
@@ -175,11 +177,11 @@ class Model:
         #     patch_size += 1
         patch_size = min(img_height, img_width, patch_size)
 
-        img_patches = extract_patches_2d(img=data, 
-                                        patch_shape=(patch_size, patch_size), 
-                                        step=[step, step], 
-                                        batch_first=True).squeeze(0)
-        
+        img_patches = extract_patches_2d(img=data,
+                                         patch_shape=(patch_size, patch_size),
+                                         step=[step, step],
+                                         batch_first=True).squeeze(0)
+
         n_patches = img_patches.size(0)
         highres_patches = []
 
@@ -213,7 +215,7 @@ class Model:
             t_out = self.chop_forward(
                 patch_size=200,  # 100
                 step=0.5,  # 0.9
-                data=data,)
+                data=data, )
         else:
             with self.get_torch_ctx():
                 t_out = self.model(data)
@@ -225,9 +227,7 @@ class Model:
         return t_out
 
 
-
 def parse_models(models_paths, scales_list=None):
-
     model_chain = models_paths.split("+") if "+" in models_paths else models_paths.split(">")
 
     all_models = get_models_paths("./models")
@@ -293,44 +293,36 @@ def get_scale_name(model_path, scale=None):
     return rlt_scale
 
 
-
-
-
 pix2pix_extras = {
     'meval': False,  # pix2pix could produce slightly better results with eval=False (uses norm layers params)
     'strict': True,
     'normalize': True,  # pix2pix and cyclegan use normalized images
-    }
+}
 
 cyglegan_extras = {
     'meval': True,
     'strict': False,  # to ignore batch statistics that were enabled models trained with Pytorch < 0.4.0
     'normalize': True,  # pix2pix and cyclegan use normalized images
-    }
+}
 
 default_extras = {
     'meval': True,
     'strict': True,
     'normalize': False,
-    }
+}
 
-
-
+parser = argparse.ArgumentParser()
+parser.add_argument('-models', '-m', type=str, required=True, help='Path to models.')
+parser.add_argument('-arch', '-a', type=str, required=False, default='infer', help='Model architecture.')
+parser.add_argument('-scale', '-s', type=str, required=False, default='-1', help='Model scaling factor.')
+parser.add_argument('-cf', required=False, action='store_true', help='Use color correction if enabled.')
+parser.add_argument('-no_gpu', '-cpu', required=False, action='store_false', help='Run in CPU if enabled.')
+parser.add_argument('-no_fp16', required=False, action='store_false', help='Disable fp16 mode if needed.')
+parser.add_argument('-norm', required=False, action='store_true',
+                    help='Normalizes images in range [-1,1] if set, else [0,1].')
 
 
 def main():
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-models', '-m', type=str, required=True, help='Path to models.')
-    parser.add_argument('-arch', '-a', type=str, required=False, default='infer', help='Model architecture.')
-    parser.add_argument('-input', '-i', type=str, required=False, default='./input', help='Path to read input images.')
-    parser.add_argument('-output', '-o', type=str, required=False, default='./output', help='Path to save output images.')
-    parser.add_argument('-scale', '-s', type=str, required=False, default='-1', help='Model scaling factor.')
-    parser.add_argument('-cf', required=False, action='store_true', help='Use color correction if enabled.')
-    parser.add_argument('-comp', required=False, action='store_true', help='Save as comparison images if enabled.')
-    parser.add_argument('-no_gpu', '-cpu', required=False, action='store_false', help='Run in CPU if enabled.')
-    parser.add_argument('-no_fp16', required=False, action='store_false', help='Disable fp16 mode if needed.')
-    parser.add_argument('-norm', required=False, action='store_true', help='Normalizes images in range [-1,1] if set, else [0,1].')
     args = parser.parse_args()
 
     torch.backends.cudnn.benchmark = True
@@ -340,7 +332,7 @@ def main():
     # TODO: all these options should be configurable
     if args.arch == 'ts':
         # TODO: not working with torchscript unless model was traced with fp16
-        fp16 = False # True
+        fp16 = False  # True
     else:
         fp16 = args.no_fp16 and gpu
 
@@ -378,15 +370,12 @@ def main():
     strict = defaults['strict']
     normalize = defaults['normalize'] or args.norm
 
-
     if fp16:
         torch.set_default_tensor_type(torch.cuda.HalfTensor if gpu else torch.HalfTensor)
-    device = torch.device('cuda') if torch.cuda.is_available() and gpu else torch.device('cpu') 
+    device = torch.device('cuda') if torch.cuda.is_available() and gpu else torch.device('cpu')
 
     cf = args.cf  # color fix
-    comp = args.comp  # save comparison images
     model_path = args.models
-    output_dir = args.output
     # TODO: chain scales
     scale = args.scale if args.scale != -1 else None
     # TODO: chain archs
@@ -399,48 +388,33 @@ def main():
             Model(
                 mc, args.arch, sc, device=device, meval=meval, strict=strict, chop=chop))
 
-    images = get_images_paths(args.input)
+    # TODO: get_image
+    img = ""  # bytes
 
-    for image_path in images:
+    # TODO: can pad|resize|crop images to next size accepted by network
+    if resize:
+        img = linear_resize(img, resize)
 
-        img_name = osp.splitext(osp.basename(image_path))[0]
-        img = read_img(image_path)
+    if use_modcrop:
+        img = modcrop(img, 4)
 
-        # if not isinstance(img, np.ndarray):
-        if img is None:
-            print(f'Error reading image {image_path}, skipping.')
-            continue
-        
-        # TODO: can pad|resize|crop images to next size accepted by network
-        if resize:
-            img = linear_resize(img, resize)
+    t_img = np2tensor(img, normalize=normalize).to(device)
+    t_img = t_img.half() if fp16 else t_img
 
-        if use_modcrop:
-            img = modcrop(img, 4)
+    t_out = t_img.clone()
+    for mod in models:
+        t_out = mod(t_out)
+        if use_guided_filter:
+            # note: r can be configured here to control details in results
+            t_out = guided_filter(t_img, t_out, r=1, eps=5e-3)
 
-        t_img = np2tensor(img, normalize=normalize).to(device)
-        t_img = t_img.half() if fp16 else t_img
+    img_out = tensor2np(t_out.detach(), denormalize=normalize)
 
-        t_out = t_img.clone()
-        for mod in models:
-            t_out = mod(t_out)
-            if use_guided_filter:
-                # note: r can be configured here to control details in results
-                t_out = guided_filter(t_img, t_out, r=1, eps=5e-3)
+    if cf:
+        img_out = color_fix(img, img_out)
 
-        img_out = tensor2np(t_out.detach(), denormalize=normalize)
-
-        if cf:
-            img_out = color_fix(img, img_out)
-
-        # save images
-        save_img_path = osp.join(
-            output_dir, f'{img_name:s}.png')
-        if comp:
-            save_img_comp([img, img_out], save_img_path)
-        else:
-            save_img(img_out, save_img_path)
-
+    # save images
+    return img_out
 
 
 if __name__ == '__main__':
