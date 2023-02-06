@@ -1,6 +1,7 @@
 import argparse
 import os.path as osp
 
+import numpy as np
 import torch
 
 from architectures import get_network
@@ -312,25 +313,17 @@ default_extras = {
 }
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-models', '-m', type=str, required=True, help='Path to models.')
-parser.add_argument('-arch', '-a', type=str, required=False, default='infer', help='Model architecture.')
-parser.add_argument('-scale', '-s', type=str, required=False, default='-1', help='Model scaling factor.')
-parser.add_argument('-cf', required=False, action='store_true', help='Use color correction if enabled.')
 parser.add_argument('-no_gpu', '-cpu', required=False, action='store_false', help='Run in CPU if enabled.')
 parser.add_argument('-no_fp16', required=False, action='store_false', help='Disable fp16 mode if needed.')
-parser.add_argument('-norm', required=False, action='store_true',
-                    help='Normalizes images in range [-1,1] if set, else [0,1].')
 
 
-def main():
-    args = parser.parse_args()
-
+def run(img: np.ndarray, models: str, arch: str, cf: bool, norm: bool, args, scale: int = None):
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = True
 
     gpu = args.no_gpu  # TODO: fp16 error with cpu: RuntimeError: "unfolded2d_copy" not implemented for 'Half'
     # TODO: all these options should be configurable
-    if args.arch == 'ts':
+    if arch == 'ts':
         # TODO: not working with torchscript unless model was traced with fp16
         fp16 = False  # True
     else:
@@ -338,24 +331,24 @@ def main():
 
     use_guided_filter = False
     use_modcrop = False
-    if 'unet_' in args.arch or 'p2p_' in args.arch:
+    if 'unet_' in arch or 'p2p_' in arch:
         defaults = pix2pix_extras
         chop = False  # tmp, could chop to unet size
-        if '512' in args.arch:
+        if '512' in arch:
             resize = 512
-        elif '256' in args.arch:
+        elif '256' in arch:
             resize = 256
-        elif '128' in args.arch:
+        elif '128' in arch:
             resize = 128
-    elif 'resnet_' in args.arch or 'cg_' in args.arch:
+    elif 'resnet_' in arch or 'cg_' in arch:
         defaults = cyglegan_extras
         chop = True
         resize = False
-    elif 'wbc' in args.arch or 'wbc' in args.models:
-        if 'tf' in args.arch or 'tf' in args.models:
-            args.arch = "wbcunet_tf"
+    elif 'wbc' in arch or 'wbc' in models:
+        if 'tf' in arch or 'tf' in models:
+            arch = "wbcunet_tf"
         else:
-            args.arch = "wbcunet"
+            arch = "wbcunet"
         defaults = pix2pix_extras
         chop = False  # True
         resize = False
@@ -368,28 +361,14 @@ def main():
 
     meval = defaults['meval']
     strict = defaults['strict']
-    normalize = defaults['normalize'] or args.norm
+    normalize = defaults['normalize'] or norm
 
     if fp16:
         torch.set_default_tensor_type(torch.cuda.HalfTensor if gpu else torch.HalfTensor)
     device = torch.device('cuda') if torch.cuda.is_available() and gpu else torch.device('cpu')
 
-    cf = args.cf  # color fix
-    model_path = args.models
-    # TODO: chain scales
-    scale = args.scale if args.scale != -1 else None
-    # TODO: chain archs
-
-    model_chain, scale_chain = parse_models(model_path)
-
-    models = []
-    for mc, sc in zip(model_chain, scale_chain):
-        models.append(
-            Model(
-                mc, args.arch, sc, device=device, meval=meval, strict=strict, chop=chop))
-
-    # TODO: get_image
-    img = ""  # bytes
+    models = [Model(
+        './models/' + models[0], arch, None, device=device, meval=meval, strict=strict, chop=chop, scale=scale)]
 
     # TODO: can pad|resize|crop images to next size accepted by network
     if resize:
